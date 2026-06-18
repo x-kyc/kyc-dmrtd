@@ -41,7 +41,7 @@ class MrtdApi {
   // See: Section 4.1 https://www.icao.int/publications/Documents/9303_p10_cons_en.pdf
   static const _defaultSelectP2          = ISO97816_SelectFileP2.returnFCP | ISO97816_SelectFileP2.returnFMD;
   final _log                             = Logger("mrtd.api");
-  static const int _defaultReadLength    = 224; // 256 = expect maximum number of bytes. TODO: in production set it to 224 - JMRTD
+  static const int _defaultReadLength    = 256;
   int _maxRead                           = _defaultReadLength;
   static const int _readAheadLength      = 8;   // Number of bytes to read at the start of file to determine file length.
   Future<void> Function()? _reinitSession;
@@ -258,10 +258,13 @@ class MrtdApi {
   }
 
   void _reduceMaxRead() {
-    if(_maxRead > 224) {
-      _maxRead = 224;         // JMRTD lib's default read size
+    if(_maxRead > 256) {
+      _maxRead = 256;
     }
-    else if(_maxRead > 160) { // Some passports can't handle more then 160 bytes per read
+    else if(_maxRead > 224) {
+      _maxRead = 224;
+    }
+    else if(_maxRead > 160) {
       _maxRead = 160;
     }
     else if(_maxRead > 128) {
