@@ -154,7 +154,11 @@ class MrtdApi {
   /// Can throw [ICCError] in case when file doesn't exist, read errors or
   /// SM session is not established but required to read file.
   /// Can throw [ComProviderError] in case connection with MRTD is lost.
-  Future<Uint8List> readFileBySFI(int sfi) async {
+  Future<Uint8List> readFileBySFI(
+    int sfi, {
+    Uint8List? resumeData,
+    void Function(Uint8List chunk, int offset, int totalLength)? onChunk,
+  }) async {
     _log.debug("Reading file sfi=0x${sfi.hex()}");
     sfi |= 0x80;
     if(sfi > 0x9F) {
@@ -164,18 +168,53 @@ class MrtdApi {
     // Read chunk of file to obtain file length
     final chunk1 = await icc.readBinaryBySFI(sfi: sfi, offset: 0, ne: _readAheadLength);
     final dtl = TLV.decodeTagAndLength(chunk1.data!);
+    final totalLength = dtl.encodedLen + dtl.length.value;
+    final resumed = resumeData == null
+        ? Uint8List(0)
+        : Uint8List.fromList(resumeData);
+
+    if(resumed.length > totalLength) {
+      throw MrtdApiError("Resume data is longer than the selected file");
+    }
+
+    final comparableLength = resumed.length < chunk1.data!.length
+        ? resumed.length
+        : chunk1.data!.length;
+    for(var i = 0; i < comparableLength; i++) {
+      if(resumed[i] != chunk1.data![i]) {
+        throw MrtdApiError("Resume data does not match the selected file");
+      }
+    }
+
+    var rawFile = resumed;
+    if(rawFile.length < chunk1.data!.length) {
+      final offset = rawFile.length;
+      final missingHeader = Uint8List.fromList(chunk1.data!.sublist(offset));
+      rawFile = Uint8List.fromList(rawFile + missingHeader);
+      onChunk?.call(missingHeader, offset, totalLength);
+    }
 
     // Read the rest of the file
-    final length =  dtl.length.value - (chunk1.data!.length - dtl.encodedLen);
-    final chunk2 = await _readBinary(offset: chunk1.data!.length, length: length);
+    final length = totalLength - rawFile.length;
+    final chunk2 = await _readBinary(
+      offset: rawFile.length,
+      length: length,
+      totalLength: totalLength,
+      onChunk: onChunk,
+    );
 
-    final rawFile = Uint8List.fromList(chunk1.data! + chunk2);
+    rawFile = Uint8List.fromList(rawFile + chunk2);
     assert(rawFile.length == dtl.encodedLen + dtl.length.value);
     return rawFile;
   }
 
   /// Reads [length] long fragment of file starting at [offset].
-  Future<Uint8List> _readBinary({ required int offset, required int length }) async {
+  Future<Uint8List> _readBinary({
+    required int offset,
+    required int length,
+    int? totalLength,
+    void Function(Uint8List chunk, int offset, int totalLength)? onChunk,
+  }) async {
     var data = Uint8List(0);
     while(length > 0) {
       int nRead = length;
@@ -216,9 +255,17 @@ class MrtdApi {
         }
 
         if(rapdu.data != null) {
-          data    = Uint8List.fromList(data + rapdu.data!);
-          offset += rapdu.data!.length;
-          length -= rapdu.data!.length;
+          final chunkOffset = offset;
+          final received = rapdu.data!;
+          final accepted = received.length > length
+              ? Uint8List.fromList(received.sublist(0, length))
+              : Uint8List.fromList(received);
+          data    = Uint8List.fromList(data + accepted);
+          offset += accepted.length;
+          length -= accepted.length;
+          if(accepted.isNotEmpty && totalLength != null) {
+            onChunk?.call(accepted, chunkOffset, totalLength);
+          }
         }
         else {
           _log.warning("No data received when trying to read binary");
@@ -241,17 +288,6 @@ class MrtdApi {
           await _reinitSession?.call();
         }
       }
-    }
-
-    // Verify total received data size is not greater than
-    // requested and remove excess data.
-    // Some passports e.g.: Slovenian on SW:0x6282 (unexpectedEOF)
-    // add possible wrong pad data: 0x000080 instead of 0x800000.
-    if(length < 0) {
-      final newSize = data.length - length.abs();
-      _log.warning("Total read data size is greater than requested, removing last ${length.abs()} byte(s)");
-      _log.debug("  Requested size:$newSize byte(s) actual size:${data.length} byte(s)");
-      data = data.sublist(0, newSize);
     }
 
     return data;

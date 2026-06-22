@@ -154,10 +154,20 @@ class Passport {
     return EfCOM.fromBytes(await _exec(() => _api.readFileBySFI(EfCOM.SFI)));
   }
 
-  Future<Uint8List> readBySFI(int sfi) async {
+  Future<Uint8List> readBySFI(
+    int sfi, {
+    Uint8List? resumeData,
+    void Function(Uint8List chunk, int offset, int totalLength)? onChunk,
+  }) async {
     await _selectDF1();
 
-    return await _exec(() => _api.readFileBySFI(sfi));
+    return await _exec(
+      () => _api.readFileBySFI(
+        sfi,
+        resumeData: resumeData,
+        onChunk: onChunk,
+      ),
+    );
   }
 
   /// Reads file EF.DG1 from passport.
