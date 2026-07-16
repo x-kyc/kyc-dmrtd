@@ -159,6 +159,6 @@ class PaceInfo {
 
   String getMappingType() {
     // Either GM, CAM, or IM.
-    return ""; //_protocol.mappingType;
+    return _protocol.mappingType.name;
   }
 }

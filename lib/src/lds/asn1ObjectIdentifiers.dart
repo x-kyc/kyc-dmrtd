@@ -50,7 +50,11 @@ List<Map<String, Object>> customOIDS = [
   {'identifierString': '0.4.0.127.0.7.2.2.4.4.1', 'readableName': 'id-PACE-ECDH-IM-3DES-CBC-CBC',     'identifier': [0, 4, 0, 127, 0, 7, 2, 2, 4, 4, 1]},
   {'identifierString': '0.4.0.127.0.7.2.2.4.4.2', 'readableName': 'id-PACE-ECDH-IM-AES-CBC-CMAC-128', 'identifier': [0, 4, 0, 127, 0, 7, 2, 2, 4, 4, 2]},
   {'identifierString': '0.4.0.127.0.7.2.2.4.4.3', 'readableName': 'id-PACE-ECDH-IM-AES-CBC-CMAC-192', 'identifier': [0, 4, 0, 127, 0, 7, 2, 2, 4, 4, 3]},
-  {'identifierString': '0.4.0.127.0.7.2.2.4.4.4', 'readableName': 'id-PACE-ECDH-IM-AES-CBC-CMAC-256', 'identifier': [0, 4, 0, 127, 0, 7, 2, 2, 4, 4, 4]}
+  {'identifierString': '0.4.0.127.0.7.2.2.4.4.4', 'readableName': 'id-PACE-ECDH-IM-AES-CBC-CMAC-256', 'identifier': [0, 4, 0, 127, 0, 7, 2, 2, 4, 4, 4]},
+  // BSI TR-03110 / ICAO 9303 p11: id-PACE-ECDH-CAM = bsi-de 2.2.4.6
+  {'identifierString': '0.4.0.127.0.7.2.2.4.6.2', 'readableName': 'id-PACE-ECDH-CAM-AES-CBC-CMAC-128', 'identifier': [0, 4, 0, 127, 0, 7, 2, 2, 4, 6, 2]},
+  {'identifierString': '0.4.0.127.0.7.2.2.4.6.3', 'readableName': 'id-PACE-ECDH-CAM-AES-CBC-CMAC-192', 'identifier': [0, 4, 0, 127, 0, 7, 2, 2, 4, 6, 3]},
+  {'identifierString': '0.4.0.127.0.7.2.2.4.6.4', 'readableName': 'id-PACE-ECDH-CAM-AES-CBC-CMAC-256', 'identifier': [0, 4, 0, 127, 0, 7, 2, 2, 4, 6, 4]}
 ];
 
 
@@ -223,7 +227,7 @@ class OIEPaceProtocol extends OIE {
         _tokenAgreementAlgorithm = TOKEN_AGREEMENT_ALGO.DH;
         _mappingType = MAPPING_TYPE.GM;
         break;
-      case 'id-PACE-DH-IM-3DES-CBC-CBC':
+      case 'ID-PACE-DH-IM-3DES-CBC-CBC':
         _cipherAlgorithm = CipherAlgorithm.DESede;
         _keyLength = KEY_LENGTH.s128;
         _tokenAgreementAlgorithm = TOKEN_AGREEMENT_ALGO.DH;
@@ -296,18 +300,24 @@ class OIEPaceProtocol extends OIE {
         _mappingType = MAPPING_TYPE.IM;
         break;
 
-      case 'id-PACE-ECDH-CAM-AES-CBC-CMAC-128':
-        _log.error('OIEPaceProtocol; Mapping type CAM  not supported: $identifierString');
-        throw OIEexception(
-            'OIEPaceProtocol; Mapping type CAM  not supported: $identifierString');
-      case 'id-PACE-ECDH-CAM-AES-CBC-CMAC-192':
-        _log.error('OIEPaceProtocol; Mapping type CAM  not supported: $identifierString');
-        throw OIEexception(
-            'OIEPaceProtocol; Mapping type CAM  not supported: $identifierString');
-      case 'id-PACE-ECDH-CAM-AES-CBC-CMAC-256':
-        _log.error('OIEPaceProtocol; Mapping type CAM  not supported: $identifierString');
-        throw OIEexception(
-            'OIEPaceProtocol; Mapping type CAM  not supported: $identifierString');
+      case 'ID-PACE-ECDH-CAM-AES-CBC-CMAC-128':
+        _cipherAlgorithm = CipherAlgorithm.AES;
+        _keyLength = KEY_LENGTH.s128;
+        _tokenAgreementAlgorithm = TOKEN_AGREEMENT_ALGO.ECDH;
+        _mappingType = MAPPING_TYPE.CAM;
+        break;
+      case 'ID-PACE-ECDH-CAM-AES-CBC-CMAC-192':
+        _cipherAlgorithm = CipherAlgorithm.AES;
+        _keyLength = KEY_LENGTH.s192;
+        _tokenAgreementAlgorithm = TOKEN_AGREEMENT_ALGO.ECDH;
+        _mappingType = MAPPING_TYPE.CAM;
+        break;
+      case 'ID-PACE-ECDH-CAM-AES-CBC-CMAC-256':
+        _cipherAlgorithm = CipherAlgorithm.AES;
+        _keyLength = KEY_LENGTH.s256;
+        _tokenAgreementAlgorithm = TOKEN_AGREEMENT_ALGO.ECDH;
+        _mappingType = MAPPING_TYPE.CAM;
+        break;
       default:
         _log.error('OIEPaceProtocol; Unknown identifierString: $identifierString');
         throw OIEexception(

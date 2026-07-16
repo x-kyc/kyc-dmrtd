@@ -10,6 +10,7 @@ import 'package:logging/logging.dart';
 import 'package:pointycastle/asn1.dart';
 
 import 'ef.dart';
+import 'asn1ObjectIdentifiers.dart';
 import 'substruct/pace_info.dart';
 
 class EfCardAccess extends ElementaryFile {
@@ -48,23 +49,40 @@ class EfCardAccess extends ElementaryFile {
     // - PACEDomainParameterInfo
 
     if (set.elements == null || set.elements!.length < 1) {
-      _log.error("Invalid structure of EF.CardAccess. More than one element in set.");
-      throw EfParseError("Invalid structure of EF.CardAccess. More than one element in set.");
+      _log.error("Invalid structure of EF.CardAccess. No elements in set.");
+      throw EfParseError("Invalid structure of EF.CardAccess. No elements in set.");
     }
 
-    if (set.elements![0] is! ASN1Sequence ){
-      _log.error("Invalid structure of EF.CardAccess. First element in set is not ASN1Sequence.");
-      throw EfParseError("Invalid structure of EF.CardAccess. First element in set is not ASN1Sequence.");
+    // EF.CardAccess is a SET of SecurityInfos: possibly several PACEInfos
+    // (e.g. GM and CAM), PACEDomainParameterInfo, CardInfo, ... Parse every
+    // element that is a valid PACEInfo and skip the rest.
+    final paceInfos = <PaceInfo>[];
+    for (final element in set.elements!) {
+      if (element is! ASN1Sequence) continue;
+      try {
+        paceInfos.add(PaceInfo(content: element));
+      } catch (e) {
+        _log.debug("Skipping non-PACEInfo/unsupported SecurityInfo: $e");
+      }
     }
 
-    PaceInfo pi = PaceInfo(content: set.elements![0] as ASN1Sequence);
+    if (paceInfos.isEmpty) {
+      _log.error("No supported PACEInfo found in EF.CardAccess.");
+      throw EfParseError("No supported PACEInfo found in EF.CardAccess.");
+    }
+
+    // Prefer a PACEInfo with supported domain parameters; among those prefer
+    // GM (battle-tested here), then CAM (same steps 1-4 on our side, extra
+    // data in step 4 response). IM mapping is not implemented, so it's last.
+    bool supported(PaceInfo pi, MAPPING_TYPE type) =>
+        pi.isPaceDomainParameterSupported && pi.protocol.mappingType == type;
+    paceInfo = paceInfos.firstWhere((pi) => supported(pi, MAPPING_TYPE.GM),
+        orElse: () => paceInfos.firstWhere(
+            (pi) => supported(pi, MAPPING_TYPE.CAM),
+            orElse: () => paceInfos.first));
+
     _log.info("PaceInfo parsed.");
-
-    _log.sdDebug("PaceInfo: $pi");
-
-    paceInfo = pi;
-
-    _log.severe("PaceInfo substruct has been saved to efcardaccess member ( paceInfo )");
+    _log.sdDebug("Selected PaceInfo: $paceInfo (of ${paceInfos.length} found)");
 
 
     //TODO: parse PACEDomainParameterInfo(9303 p11, 9.2.1)

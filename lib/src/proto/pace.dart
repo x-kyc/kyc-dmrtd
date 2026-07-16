@@ -229,9 +229,17 @@ class ResponseAPDUStep4Pace {
   late Uint8List data;
 
   late Uint8List _authToken;
+  Uint8List? _encryptedChipAuthenticationData;
+  Uint8List? _certificationAuthorityReference;
 
 
   Uint8List get authToken => _authToken;
+
+  /// Present only for PACE-CAM (tag 0x8A): E(KS_Enc, CA_ICC).
+  Uint8List? get encryptedChipAuthenticationData => _encryptedChipAuthenticationData;
+
+  /// Present only for PACE with terminal authentication (tag 0x87/0x88).
+  Uint8List? get certificationAuthorityReference => _certificationAuthorityReference;
 
 
   static final _log = Logger("ResponseAPDUStep4Pace");
@@ -257,20 +265,37 @@ class ResponseAPDUStep4Pace {
     }
     _log.verbose("Pace.step4; Response data contains dynamic authentication data");
 
-    //checking if dynamic authentication data contains public element
-    TLV mappingData = TLV.fromBytes(dynamicAuthenticationData.value);
+    // Dynamic authentication data holds the auth token (0x86, mandatory) and,
+    // depending on protocol, extra elements: CAR (0x87/0x88) and for PACE-CAM
+    // encrypted chip authentication data (0x8A). Walk all of them.
+    Uint8List? authToken;
+    var offset = 0;
+    final content = dynamicAuthenticationData.value;
+    while (offset < content.length) {
+      final tv = TLV.decode(Uint8List.sublistView(content, offset));
+      offset += tv.encodedLen;
+      switch (tv.tag.value) {
+        case ExchangedDataPACE.authenticationTokenResponse:
+          authToken = tv.value;
+          break;
+        case ExchangedDataPACE.certificationAuthorityReference:
+        case ExchangedDataPACE.certificationAuthorityReference2:
+          _certificationAuthorityReference = tv.value;
+          break;
+        case ExchangedDataPACE.encryptedChipAuthenticationData:
+          _encryptedChipAuthenticationData = tv.value;
+          _log.debug("Pace.step4; Encrypted chip authentication data (CAM) received");
+          break;
+        default:
+          _log.warning("Pace.step4; Ignoring unknown tag 0x${tv.tag.value.toRadixString(16)} in dynamic authentication data");
+      }
+    }
 
-    int mappingDataResponseTag = mappingData.tag;
-    if (mappingDataResponseTag != ExchangedDataPACE.authenticationTokenResponse){
+    if (authToken == null || authToken.length == 0){
       _log.error("Pace.step4; Dynamic authentication data does not contain authentication token");
       throw ResponseAPDUStep4PaceError("Pace.step4; Dynamic authentication data does not contain authentication token");
     }
-
-    if (mappingData.value.length == 0){
-      _log.error("Pace.step4; Mapping data is empty");
-      throw ResponseAPDUStep4PaceError("Pace.step4; Mapping data is empty");
-    }
-    _authToken = mappingData.value;
+    _authToken = authToken;
     _log.debug("Parsing step 4 response data was successful");
     _log.sdVerbose("Authentication token: ${_authToken.hex()}");
   }
@@ -580,8 +605,8 @@ class PACE {
 
       if (cipherAlgo == CipherAlgorithm.AES){
         _log.debug("PACE.decryptNonce; Cipher algorithm: AES");
-        AESCipher aesCipher128 = AESChiperSelector.getChiper(size: KEY_LENGTH.s128);
-        Uint8List decryptedNonce = aesCipher128.decrypt(data: nonce, key: k_pi);
+        AESCipher aesCipher = AESChiperSelector.getChiper(size: keyLength);
+        Uint8List decryptedNonce = aesCipher.decrypt(data: nonce, key: k_pi);
         _log.sdVerbose("PACE.decryptNonce; Decrypted nonce: ${decryptedNonce.hex()}");
         return decryptedNonce;
       }
