@@ -148,8 +148,10 @@ class AESCipher {
   }
 
   Uint8List calculateCMAC({required Uint8List data, required Uint8List key}) {
-    // AES has no padding for CMAC
-    final cmac = CMac(BlockCipher('AES'), 64)..init(KeyParameter(key)); //cmac mac size is fixed 64 bits
+    // AES has no padding for CMAC.
+    // Instantiate the engine directly — the registry lookup BlockCipher('AES')
+    // stopped working with pointycastle 4.0.0 and killed PACE step 4.
+    final cmac = CMac(_factory(), 64)..init(KeyParameter(key)); //cmac mac size is fixed 64 bits
     return cmac.process(data);
   }
 }

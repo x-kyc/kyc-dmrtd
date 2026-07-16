@@ -38,4 +38,19 @@ void main() {
     expect(AESChiperSelector.getChiper(size: KEY_LENGTH.s192).size, 24);
     expect(AESChiperSelector.getChiper(size: KEY_LENGTH.s256).size, 32);
   });
+
+  // NIST SP 800-38B AES-128 CMAC vector, truncated to the 64-bit MAC dmrtd
+  // uses. Guards the direct AESEngine instantiation in calculateCMAC — the
+  // registry lookup BlockCipher('AES') broke with pointycastle 4.0.0.
+  test('calculateCMAC matches NIST SP 800-38B vector (64-bit truncation)', () {
+    final mac = AESCipher(size: KEY_LENGTH.s128).calculateCMAC(
+        data: '6bc1bee22e409f96e93d7e117393172a'.bytes,
+        key: '2b7e151628aed2a6abf7158809cf4f3c'.bytes);
+    expect(mac, '070a16b46b4d4144'.bytes);
+  });
+}
+
+extension on String {
+  Uint8List get bytes => Uint8List.fromList(List.generate(
+      length ~/ 2, (i) => int.parse(substring(i * 2, i * 2 + 2), radix: 16)));
 }
