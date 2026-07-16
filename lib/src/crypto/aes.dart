@@ -147,12 +147,59 @@ class AESCipher {
     return Uint8List.fromList(list);
   }
 
+  /// AES-CMAC per NIST SP 800-38B / RFC 4493, truncated to 64 bits.
+  ///
+  /// Implemented directly on the AES engine because pointycastle's CMac
+  /// (3.x and 4.x) initializes its CBC cipher with a zero IV sized to the
+  /// KEY length instead of the block size, so any key longer than 16 bytes
+  /// (AES-192/256 — most modern PACE passports) throws ArgumentError.
   Uint8List calculateCMAC({required Uint8List data, required Uint8List key}) {
-    // AES has no padding for CMAC.
-    // Instantiate the engine directly — the registry lookup BlockCipher('AES')
-    // stopped working with pointycastle 4.0.0 and killed PACE step 4.
-    final cmac = CMac(_factory(), 64)..init(KeyParameter(key)); //cmac mac size is fixed 64 bits
-    return cmac.process(data);
+    final aes = _factory()..init(true, KeyParameter(key));
+
+    Uint8List encryptBlock(Uint8List block) {
+      final out = Uint8List(AES_BLOCK_SIZE);
+      aes.processBlock(block, 0, out, 0);
+      return out;
+    }
+
+    // Subkey doubling in GF(2^128): shift left one bit, xor 0x87 on carry.
+    Uint8List dbl(Uint8List b) {
+      final out = Uint8List(AES_BLOCK_SIZE);
+      var bit = 0;
+      for (var i = AES_BLOCK_SIZE - 1; i >= 0; i--) {
+        out[i] = ((b[i] << 1) | bit) & 0xff;
+        bit = (b[i] >> 7) & 1;
+      }
+      if (bit != 0) out[AES_BLOCK_SIZE - 1] ^= 0x87;
+      return out;
+    }
+
+    final k1 = dbl(encryptBlock(Uint8List(AES_BLOCK_SIZE)));
+    final k2 = dbl(k1);
+
+    final blocks = data.isEmpty ? 1 : (data.length + AES_BLOCK_SIZE - 1) ~/ AES_BLOCK_SIZE;
+    final lastIsComplete = data.isNotEmpty && data.length % AES_BLOCK_SIZE == 0;
+    final lastOffset = (blocks - 1) * AES_BLOCK_SIZE;
+
+    var x = Uint8List(AES_BLOCK_SIZE);
+    for (var i = 0; i < lastOffset; i += AES_BLOCK_SIZE) {
+      for (var j = 0; j < AES_BLOCK_SIZE; j++) {
+        x[j] ^= data[i + j];
+      }
+      x = encryptBlock(x);
+    }
+
+    final last = Uint8List(AES_BLOCK_SIZE);
+    final subkey = lastIsComplete ? k1 : k2;
+    last.setRange(0, data.length - lastOffset, data, lastOffset);
+    if (!lastIsComplete) {
+      last[data.length - lastOffset] = 0x80;
+    }
+    for (var j = 0; j < AES_BLOCK_SIZE; j++) {
+      x[j] ^= last[j] ^ subkey[j];
+    }
+
+    return Uint8List.sublistView(encryptBlock(x), 0, 8); //mac size is fixed 64 bits
   }
 }
 
